@@ -93,10 +93,9 @@ def get_staff_quiz_by_id(quiz_id):
     }), 200
 
 
-# ---------------- STAFF VIEW RESULTS BY COURSE ----------------
+# --- STAFF: VIEW RESULTS BY COURSE (With CORS Fix) ---
 @quiz_bp.route("/staff/results/<course_id>", methods=["GET", "OPTIONS"])
 def get_course_results(course_id):
-    # Handle CORS Preflight
     if request.method == "OPTIONS":
         return jsonify({"msg": "ok"}), 200
 
@@ -105,22 +104,18 @@ def get_course_results(course_id):
         claims = get_jwt()
         if claims.get("role") != "staff":
             return jsonify({"msg": "Staff access required"}), 403
-            
         try:
-            # Convert cursor to list immediately to avoid exhaustion
             course_quizzes = list(quizzes_collection.find({"course_id": course_id}, {"_id": 1, "title": 1}))
             if not course_quizzes:
                 return jsonify({"results": []}), 200
 
             quiz_ids = [q["_id"] for q in course_quizzes]
-            results_cursor = quiz_results_collection.find({"quiz_id": {"$in": quiz_ids}}).sort("submitted_at", -1)
-            results_list = list(results_cursor)
+            results_list = list(quiz_results_collection.find({"quiz_id": {"$in": quiz_ids}}).sort("submitted_at", -1))
 
-            formatted_results = []
+            formatted = []
             for res in results_list:
                 quiz_info = next((q for q in course_quizzes if q["_id"] == res["quiz_id"]), None)
-                
-                formatted_results.append({
+                formatted.append({
                     "result_id": str(res["_id"]),
                     "student_id": res.get("student_id"),
                     "quiz_title": quiz_info["title"] if quiz_info else "Deleted Quiz",
@@ -129,13 +124,9 @@ def get_course_results(course_id):
                     "percentage": res.get("percentage"),
                     "submitted_at": res.get("submitted_at")
                 })
-            
-            return jsonify({"results": formatted_results}), 200
-
+            return jsonify({"results": formatted}), 200
         except Exception as e:
-            print(f"🔥 Backend Error: {str(e)}")
-            return jsonify({"msg": "Internal Server Error", "error": str(e)}), 500
-
+            return jsonify({"msg": "Error", "error": str(e)}), 500
     return fetch_data()
 
 
@@ -191,40 +182,37 @@ def get_student_quiz_by_id(quiz_id):
     return jsonify({"submitted": False, "questions": sanitized}), 200
 
 
+# --- STUDENT: SUBMIT QUIZ ---
 @quiz_bp.route("/student/quiz/<quiz_id>/submit", methods=["POST"])
 @student_required
 def submit_quiz_answers(quiz_id):
     try:
         obj_id = ObjectId(quiz_id)
-    except Exception:
-        return jsonify({"message": "Invalid ID"}), 400
+        student_id = get_jwt_identity()
+        
+        if quiz_results_collection.find_one({"quiz_id": obj_id, "student_id": student_id}):
+            return jsonify({"message": "Already submitted"}), 403
 
-    student_id = get_jwt_identity()
-    if quiz_results_collection.find_one({"quiz_id": obj_id, "student_id": student_id}):
-        return jsonify({"message": "Already submitted"}), 403
+        quiz = quizzes_collection.find_one({"_id": obj_id})
+        if not quiz: return jsonify({"message": "Quiz not found"}), 404
 
-    quiz = quizzes_collection.find_one({"_id": obj_id})
-    if not quiz: return jsonify({"message": "Quiz not found"}), 404
+        data = request.get_json(force=True)
+        user_answers = data.get("answers", {})
 
-    data = request.get_json(force=True)
-    user_answers = data.get("answers", {})
-
-    try:
         results = evaluate_quiz(quiz, user_answers)
         total = len(results)
         correct = sum(1 for r in results if r["is_correct"])
-        percentage = (correct / total * 100) if total > 0 else 0
+        percentage = round((correct / total * 100), 2) if total > 0 else 0
 
         quiz_results_collection.insert_one({
             "quiz_id": obj_id,
             "student_id": student_id,
             "score": correct,
             "total_questions": total,
-            "percentage": round(percentage, 2),
+            "percentage": percentage,
             "submitted_at": datetime.utcnow(),
             "details": results
         })
-
         return jsonify({"score": correct, "total": total, "percentage": percentage}), 200
     except Exception as e:
         return jsonify({"message": str(e)}), 500
@@ -236,12 +224,21 @@ def evaluate_quiz(quiz, user_answers):
     questions = quiz.get("questions", [])
     for idx, q in enumerate(questions):
         q_id = str(idx)
-        # Normalize both answers: strip whitespace and convert to lowercase
+        # DB correct answer (stored as index "0", "1", etc.)
         correct_ans = str(q.get("answer", "")).strip().lower()
+        # Student sent answer (now index "0", "1", etc.)
         student_ans = str(user_answers.get(q_id, "")).strip().lower()
+        
+        is_correct = (student_ans == correct_ans) and (student_ans != "")
         
         results.append({
             "question_id": q_id,
-            "is_correct": (student_ans == correct_ans) and (student_ans != "")
+            "question_text": q.get("question"),
+            "student_answer": student_ans,
+            "correct_answer": correct_ans,
+            "is_correct": is_correct
         })
     return results
+
+
+
