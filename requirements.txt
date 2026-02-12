@@ -1,3 +1,8 @@
+flask
+flask-cors
+flask-jwt-extended
+gunicorn
+
 fastapi
 uvicorn
 pydantic
@@ -5,10 +10,6 @@ python-multipart
 requests
 python-dotenv
 PyMuPDF
-sqlalchemy         # for SQL-based databases
-pymongo            # if using MongoDB
+sqlalchemy
+pymongo
 groq
-flask_jwt_extended   # for JWT authentication\
-flask_cors            # for handling CORS in Flask applications
-gunicorn
-
