@@ -263,29 +263,59 @@ def evaluate_quiz(quiz, user_answers):
         })
     return results
 
-# ---------------- STAFF VIEW RESULTS BY COURSE ----------------
-@quiz_bp.route("/staff/results/<course_id>", methods=["GET"])
-@staff_required
+from flask import jsonify, request
+from flask_jwt_extended import jwt_required, get_jwt
+
+@quiz_bp.route("/staff/results/<course_id>", methods=["GET", "OPTIONS"])
 def get_course_results(course_id):
-    # Find all quizzes for this course
-    course_quizzes = quizzes_collection.find({"course_id": course_id}, {"_id": 1, "title": 1})
-    quiz_ids = [q["_id"] for q in course_quizzes]
+    # 1. Handle Preflight (Critical for CORS)
+    # Browsers send this to check permissions. No Token is present yet.
+    if request.method == "OPTIONS":
+        return jsonify({"msg": "ok"}), 200
 
-    # Find all results for these quizzes
-    results_cursor = quiz_results_collection.find({"quiz_id": {"$in": quiz_ids}}).sort("submitted_at", -1)
+    # 2. Use a nested function or manual check to verify JWT
+    # This prevents the decorator from blocking the OPTIONS request
+    @jwt_required()
+    def fetch_data():
+        claims = get_jwt()
+        if claims.get("role") != "staff":
+            return jsonify({"msg": "Staff access required"}), 403
+            
+        try:
+            # 3. CRITICAL: Convert cursor to list immediately
+            # This prevents the "Cursor Exhausted" error (StopIteration)
+            course_quizzes = list(quizzes_collection.find({"course_id": course_id}, {"_id": 1, "title": 1}))
+            
+            if not course_quizzes:
+                return jsonify({"results": []}), 200
 
-    results = []
-    for res in results_cursor:
-        # Optionally: Fetch student name from users_collection if needed
-        results.append({
-            "result_id": str(res["_id"]),
-            "student_id": res.get("student_id"),
-            "quiz_title": next((q["title"] for q in course_quizzes if q["_id"] == res["quiz_id"]), "Unknown Quiz"),
-            "score": res.get("score"),
-            "total": res.get("total_questions"),
-            "percentage": res.get("percentage"),
-            "submitted_at": res.get("submitted_at")
-        })
-    
-    return jsonify({"results": results}), 200
+            quiz_ids = [q["_id"] for q in course_quizzes]
+
+            # 4. Fetch results and convert to list
+            results_cursor = quiz_results_collection.find({"quiz_id": {"$in": quiz_ids}}).sort("submitted_at", -1)
+            results_list = list(results_cursor)
+
+            results = []
+            for res in results_list:
+                # Find the title from our cached course_quizzes list
+                quiz_info = next((q for q in course_quizzes if q["_id"] == res["quiz_id"]), None)
+                
+                results.append({
+                    "result_id": str(res["_id"]),
+                    "student_id": res.get("student_id"),
+                    "quiz_title": quiz_info["title"] if quiz_info else "Deleted Quiz",
+                    "score": res.get("score"),
+                    "total": res.get("total_questions"),
+                    "percentage": res.get("percentage"),
+                    "submitted_at": res.get("submitted_at")
+                })
+            
+            return jsonify({"results": results}), 200
+
+        except Exception as e:
+            # This will show up in your Render logs
+            print(f"🔥 Backend Error: {str(e)}")
+            return jsonify({"msg": "Internal Server Error", "error": str(e)}), 500
+
+    return fetch_data()
 
