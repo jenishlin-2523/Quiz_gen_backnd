@@ -11,7 +11,10 @@ app.config["JWT_SECRET_KEY"] = config.JWT_SECRET_KEY
 
 CORS(
     app,
-    origins=["http://localhost:3000"],  
+    origins=[
+        "http://localhost:3000",
+        "https://quiz-generator-h5ni.vercel.app/"
+    ], 
     supports_credentials=True,
     methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type", "Authorization"]
