@@ -10,4 +10,5 @@ pymongo            # if using MongoDB
 groq
 flask_jwt_extended   # for JWT authentication\
 flask_cors            # for handling CORS in Flask applications
+gunicorn
 
