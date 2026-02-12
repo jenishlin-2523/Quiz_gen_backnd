@@ -203,6 +203,29 @@ def submit_quiz_answers(quiz_id):
         # Get user answers from request
         data = request.get_json(force=True)
         user_answers = data.get("answers", {})
+        
+        print("\n" + "="*80)
+        print("SUBMISSION RECEIVED")
+        print("="*80)
+        print(f"Student ID: {student_id}")
+        print(f"Quiz ID: {quiz_id}")
+        print(f"User Answers Received: {user_answers}")
+        print(f"Type of user_answers: {type(user_answers)}")
+        
+        # Print first question details for debugging
+        if quiz.get("questions"):
+            first_q = quiz["questions"][0]
+            print(f"\nFirst Question Details:")
+            print(f"  Question: {first_q.get('question', 'N/A')[:60]}...")
+            print(f"  Answer field: {first_q.get('answer')}")
+            print(f"  Answer type: {type(first_q.get('answer'))}")
+            print(f"  Options: {first_q.get('options', [])}")
+            
+            # Check what user submitted for first question
+            user_first = user_answers.get("0", "NOT_PROVIDED")
+            print(f"  User submitted for Q0: '{user_first}' (type: {type(user_first)})")
+        
+        print("="*80 + "\n")
 
         # Evaluate the quiz
         results = evaluate_quiz(quiz, user_answers)
@@ -221,6 +244,8 @@ def submit_quiz_answers(quiz_id):
             "details": results
         })
         
+        print(f"\n✅ FINAL SCORE: {correct}/{total} ({percentage}%)\n")
+        
         return jsonify({
             "score": correct, 
             "total": total, 
@@ -237,48 +262,64 @@ def submit_quiz_answers(quiz_id):
 def evaluate_quiz(quiz, user_answers):
     """
     Evaluates quiz answers by comparing student answers with correct answers.
-    Expects both answers to be stored as indices: "0", "1", "2", "3"
     """
     results = []
     questions = quiz.get("questions", [])
     
-    print(f"\n{'='*60}")
-    print(f"DEBUG: Evaluating quiz with {len(questions)} questions")
-    print(f"DEBUG: User answers received: {user_answers}")
-    print(f"{'='*60}\n")
+    print(f"\n{'='*80}")
+    print(f"EVALUATING QUIZ")
+    print(f"{'='*80}")
+    print(f"Total questions: {len(questions)}")
+    print(f"User answers: {user_answers}")
+    print(f"{'='*80}\n")
     
     for idx, q in enumerate(questions):
         q_id = str(idx)
         
-        # Get correct answer from database (should be index like "0", "1", "2", "3")
-        correct_ans = str(q.get("answer", "")).strip()
+        # Get correct answer from database
+        correct_ans = q.get("answer")
+        correct_ans_str = str(correct_ans).strip() if correct_ans is not None else ""
         
-        # Get student's submitted answer (should also be index like "0", "1", "2", "3")
-        student_ans = str(user_answers.get(q_id, "")).strip()
+        # Get student's submitted answer
+        student_ans = user_answers.get(q_id, "")
+        student_ans_str = str(student_ans).strip() if student_ans is not None else ""
         
-        # Check if answer is correct
-        is_correct = (student_ans == correct_ans) and (student_ans != "" and correct_ans != "")
+        # Try multiple comparison strategies
+        is_correct = False
+        
+        # Strategy 1: Direct string comparison
+        if student_ans_str == correct_ans_str and student_ans_str != "":
+            is_correct = True
+            
+        # Strategy 2: Integer comparison (in case one is int, one is string)
+        try:
+            if int(student_ans_str) == int(correct_ans_str):
+                is_correct = True
+        except (ValueError, TypeError):
+            pass
         
         # Debug output for each question
         print(f"Question {q_id}:")
-        print(f"  Question text: {q.get('question', 'N/A')[:50]}...")
-        print(f"  Student answer: '{student_ans}'")
-        print(f"  Correct answer: '{correct_ans}'")
-        print(f"  Is correct: {is_correct}")
-        print(f"  Choices: {q.get('choices', [])}")
+        print(f"  Text: {q.get('question', 'N/A')[:60]}...")
+        print(f"  Choices: {q.get('options', [])}")
+        print(f"  Correct answer (raw): {repr(correct_ans)} (type: {type(correct_ans)})")
+        print(f"  Correct answer (str): '{correct_ans_str}'")
+        print(f"  Student answer (raw): {repr(student_ans)} (type: {type(student_ans)})")
+        print(f"  Student answer (str): '{student_ans_str}'")
+        print(f"  Match: {is_correct}")
         print()
         
         results.append({
             "question_id": q_id,
             "question_text": q.get("question"),
-            "student_answer": student_ans,
-            "correct_answer": correct_ans,
+            "student_answer": student_ans_str,
+            "correct_answer": correct_ans_str,
             "is_correct": is_correct
         })
     
     correct_count = sum(1 for r in results if r["is_correct"])
-    print(f"\n{'='*60}")
-    print(f"DEBUG: Final score: {correct_count}/{len(results)} correct")
-    print(f"{'='*60}\n")
+    print(f"\n{'='*80}")
+    print(f"EVALUATION COMPLETE: {correct_count}/{len(results)} correct")
+    print(f"{'='*80}\n")
     
     return results
