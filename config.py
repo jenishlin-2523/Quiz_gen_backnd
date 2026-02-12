@@ -1,0 +1,5 @@
+JWT_SECRET_KEY = "super-secret-key"
+GROQ_API_KEY = "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"
+GROQ_MODEL = "llama-3.1-8b-instant"
+MONGO_URI = "mongodb+srv://jenishlinb_db_user:I4WR1bvg9NY0Kyfe@cluster0.bvblj13.mongodb.net/?appName=Cluster0"
+DB_NAME = "quiz_app"
