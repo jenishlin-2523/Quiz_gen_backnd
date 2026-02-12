@@ -262,3 +262,30 @@ def evaluate_quiz(quiz, user_answers):
             "is_correct": student_answer == correct_answer
         })
     return results
+
+# ---------------- STAFF VIEW RESULTS BY COURSE ----------------
+@quiz_bp.route("/staff/results/<course_id>", methods=["GET"])
+@staff_required
+def get_course_results(course_id):
+    # Find all quizzes for this course
+    course_quizzes = quizzes_collection.find({"course_id": course_id}, {"_id": 1, "title": 1})
+    quiz_ids = [q["_id"] for q in course_quizzes]
+
+    # Find all results for these quizzes
+    results_cursor = quiz_results_collection.find({"quiz_id": {"$in": quiz_ids}}).sort("submitted_at", -1)
+
+    results = []
+    for res in results_cursor:
+        # Optionally: Fetch student name from users_collection if needed
+        results.append({
+            "result_id": str(res["_id"]),
+            "student_id": res.get("student_id"),
+            "quiz_title": next((q["title"] for q in course_quizzes if q["_id"] == res["quiz_id"]), "Unknown Quiz"),
+            "score": res.get("score"),
+            "total": res.get("total_questions"),
+            "percentage": res.get("percentage"),
+            "submitted_at": res.get("submitted_at")
+        })
+    
+    return jsonify({"results": results}), 200
+
