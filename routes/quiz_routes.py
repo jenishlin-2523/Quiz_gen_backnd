@@ -165,7 +165,8 @@ def get_student_quiz_by_id(quiz_id):
         return jsonify({"message": "Invalid ID"}), 400
 
     quiz = quizzes_collection.find_one({"_id": obj_id})
-    if not quiz: return jsonify({"message": "Quiz not found"}), 404
+    if not quiz: 
+        return jsonify({"message": "Quiz not found"}), 404
 
     student_id = get_jwt_identity()
     if quiz_results_collection.find_one({"quiz_id": obj_id, "student_id": student_id}):
@@ -190,20 +191,26 @@ def submit_quiz_answers(quiz_id):
         obj_id = ObjectId(quiz_id)
         student_id = get_jwt_identity()
         
+        # Check if already submitted
         if quiz_results_collection.find_one({"quiz_id": obj_id, "student_id": student_id}):
             return jsonify({"message": "Already submitted"}), 403
 
+        # Get quiz from database
         quiz = quizzes_collection.find_one({"_id": obj_id})
-        if not quiz: return jsonify({"message": "Quiz not found"}), 404
+        if not quiz: 
+            return jsonify({"message": "Quiz not found"}), 404
 
+        # Get user answers from request
         data = request.get_json(force=True)
         user_answers = data.get("answers", {})
 
+        # Evaluate the quiz
         results = evaluate_quiz(quiz, user_answers)
         total = len(results)
         correct = sum(1 for r in results if r["is_correct"])
         percentage = round((correct / total * 100), 2) if total > 0 else 0
 
+        # Save result to database
         quiz_results_collection.insert_one({
             "quiz_id": obj_id,
             "student_id": student_id,
@@ -213,23 +220,53 @@ def submit_quiz_answers(quiz_id):
             "submitted_at": datetime.utcnow(),
             "details": results
         })
-        return jsonify({"score": correct, "total": total, "percentage": percentage}), 200
+        
+        return jsonify({
+            "score": correct, 
+            "total": total, 
+            "percentage": percentage
+        }), 200
+        
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         return jsonify({"message": str(e)}), 500
 
 
 # ---------------- HELPER: EVALUATION ----------------
 def evaluate_quiz(quiz, user_answers):
+    """
+    Evaluates quiz answers by comparing student answers with correct answers.
+    Expects both answers to be stored as indices: "0", "1", "2", "3"
+    """
     results = []
     questions = quiz.get("questions", [])
+    
+    print(f"\n{'='*60}")
+    print(f"DEBUG: Evaluating quiz with {len(questions)} questions")
+    print(f"DEBUG: User answers received: {user_answers}")
+    print(f"{'='*60}\n")
+    
     for idx, q in enumerate(questions):
         q_id = str(idx)
-        # DB correct answer (stored as index "0", "1", etc.)
-        correct_ans = str(q.get("answer", "")).strip().lower()
-        # Student sent answer (now index "0", "1", etc.)
-        student_ans = str(user_answers.get(q_id, "")).strip().lower()
         
-        is_correct = (student_ans == correct_ans) and (student_ans != "")
+        # Get correct answer from database (should be index like "0", "1", "2", "3")
+        correct_ans = str(q.get("answer", "")).strip()
+        
+        # Get student's submitted answer (should also be index like "0", "1", "2", "3")
+        student_ans = str(user_answers.get(q_id, "")).strip()
+        
+        # Check if answer is correct
+        is_correct = (student_ans == correct_ans) and (student_ans != "" and correct_ans != "")
+        
+        # Debug output for each question
+        print(f"Question {q_id}:")
+        print(f"  Question text: {q.get('question', 'N/A')[:50]}...")
+        print(f"  Student answer: '{student_ans}'")
+        print(f"  Correct answer: '{correct_ans}'")
+        print(f"  Is correct: {is_correct}")
+        print(f"  Choices: {q.get('choices', [])}")
+        print()
         
         results.append({
             "question_id": q_id,
@@ -238,7 +275,10 @@ def evaluate_quiz(quiz, user_answers):
             "correct_answer": correct_ans,
             "is_correct": is_correct
         })
+    
+    correct_count = sum(1 for r in results if r["is_correct"])
+    print(f"\n{'='*60}")
+    print(f"DEBUG: Final score: {correct_count}/{len(results)} correct")
+    print(f"{'='*60}\n")
+    
     return results
-
-
-
