@@ -93,7 +93,7 @@ def get_staff_quiz_by_id(quiz_id):
     }), 200
 
 
-# --- STAFF: VIEW RESULTS BY COURSE (With CORS Fix) ---
+# --- STAFF: VIEW RESULTS BY COURSE (With CORS Fix)
 @quiz_bp.route("/staff/results/<course_id>", methods=["GET", "OPTIONS"])
 def get_course_results(course_id):
     if request.method == "OPTIONS":
@@ -106,24 +106,35 @@ def get_course_results(course_id):
             return jsonify({"msg": "Staff access required"}), 403
             
         try:
-            # 1. Get Quizzes
+            # 1. Get Quizzes for this course
             course_quizzes = list(quizzes_collection.find({"course_id": course_id}, {"_id": 1, "title": 1}))
             if not course_quizzes:
                 return jsonify({"results": []}), 200
 
             quiz_titles = {str(q["_id"]): q["title"] for q in course_quizzes}
-            target_quiz_ids = [str(q["_id"]) for q in course_quizzes]
+            
+            # Create a list of IDs in BOTH String and ObjectId format to ensure a match
+            target_ids_str = [str(q["_id"]) for q in course_quizzes]
+            target_ids_obj = [q["_id"] for q in course_quizzes]
+            combined_targets = list(set(target_ids_str + target_ids_obj))
 
             # 2. Aggregation Pipeline
             pipeline = [
-                {"$match": {"quiz_id": {"$in": target_quiz_ids}}},
+                # Match results that belong to any of the course's quizzes
+                {"$match": {"quiz_id": {"$in": combined_targets}}},
                 
-                # Convert student_id to ObjectId safely
+                # Convert student_id (string) to ObjectId for the lookup
                 {"$addFields": {
-                    "student_oid": {"$toObjectId": "$student_id"}
+                    "student_oid": {
+                        "$cond": {
+                            "if": {"$eq": [{"$type": "$student_id"}, "string"]},
+                            "then": {"$toObjectId": "$student_id"},
+                            "else": "$student_id"
+                        }
+                    }
                 }},
                 
-                # Join with users
+                # Join with users collection to get student names
                 {"$lookup": {
                     "from": "users", 
                     "localField": "student_oid",
@@ -131,11 +142,10 @@ def get_course_results(course_id):
                     "as": "user_data"
                 }},
                 
-                # UPDATED: preserveNullAndEmptyArrays prevents the result from disappearing 
-                # if the username isn't found
                 {"$unwind": {"path": "$user_data", "preserveNullAndEmptyArrays": True}},
                 
-                {"$sort": {"percentage": -1}}
+                # Sort by score/percentage descending (Leaderboard style)
+                {"$sort": {"percentage": -1, "score": -1}}
             ]
 
             results_list = list(quiz_results_collection.aggregate(pipeline))
@@ -143,27 +153,26 @@ def get_course_results(course_id):
             # 3. Final Formatting
             formatted = []
             for res in results_list:
-                # Safely extract username or fallback
                 user_obj = res.get("user_data", {})
                 username = user_obj.get("username", "Unknown Student")
                 
-                # Ensure quiz_id is a string for the dictionary lookup
-                q_id_str = str(res.get("quiz_id"))
+                # Logic to find the title even if ID is stored differently
+                q_id_raw = res.get("quiz_id")
+                q_id_str = str(q_id_raw)
 
                 formatted.append({
                     "result_id": str(res["_id"]),
                     "username": username,
-                    "quiz_title": quiz_titles.get(q_id_str, "Deleted Quiz"),
+                    "quiz_title": quiz_titles.get(q_id_str, "Untitled Quiz"),
                     "score": res.get("score", 0),
-                    "total": res.get("total") or res.get("total_questions") or 10,
+                    "total": res.get("total_questions") or res.get("total") or 10,
                     "percentage": res.get("percentage", 0),
-                    "submitted_at": res.get("submitted_at")
+                    "submitted_at": res.get("submitted_at").isoformat() if isinstance(res.get("submitted_at"), datetime) else res.get("submitted_at")
                 })
 
             return jsonify({"results": formatted}), 200
             
         except Exception as e:
-            # Print to console so you can see the error in your terminal
             print(f"DEBUG ERROR: {str(e)}") 
             return jsonify({"msg": "Error", "error": str(e)}), 500
 
