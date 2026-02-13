@@ -106,51 +106,56 @@ def get_course_results(course_id):
             return jsonify({"msg": "Staff access required"}), 403
             
         try:
-            # 1. Get all Quiz IDs belonging to this course
+            # 1. Get Quizzes
             course_quizzes = list(quizzes_collection.find({"course_id": course_id}, {"_id": 1, "title": 1}))
             if not course_quizzes:
                 return jsonify({"results": []}), 200
 
-            # Map for quick title lookup: { "id_string": "Quiz Title" }
             quiz_titles = {str(q["_id"]): q["title"] for q in course_quizzes}
             target_quiz_ids = [str(q["_id"]) for q in course_quizzes]
 
-            # 2. Aggregation Pipeline to Join Usernames
+            # 2. Aggregation Pipeline
             pipeline = [
-                # Match only results for the quizzes in this course
                 {"$match": {"quiz_id": {"$in": target_quiz_ids}}},
                 
-                # Convert student_id string to ObjectId for the join
+                # Convert student_id to ObjectId safely
                 {"$addFields": {
                     "student_oid": {"$toObjectId": "$student_id"}
                 }},
                 
-                # Join with users collection
+                # Join with users
                 {"$lookup": {
-                    "from": "users",
+                    "from": "users", 
                     "localField": "student_oid",
                     "foreignField": "_id",
                     "as": "user_data"
                 }},
                 
-                # Flatten user_data array
-                {"$unwind": "$user_data"},
+                # UPDATED: preserveNullAndEmptyArrays prevents the result from disappearing 
+                # if the username isn't found
+                {"$unwind": {"path": "$user_data", "preserveNullAndEmptyArrays": True}},
                 
-                # Sort by percentage Descending (Toppers First)
                 {"$sort": {"percentage": -1}}
             ]
 
             results_list = list(quiz_results_collection.aggregate(pipeline))
 
-            # 3. Format response for Frontend
+            # 3. Final Formatting
             formatted = []
             for res in results_list:
+                # Safely extract username or fallback
+                user_obj = res.get("user_data", {})
+                username = user_obj.get("username", "Unknown Student")
+                
+                # Ensure quiz_id is a string for the dictionary lookup
+                q_id_str = str(res.get("quiz_id"))
+
                 formatted.append({
                     "result_id": str(res["_id"]),
-                    "username": res["user_data"].get("username", "Unknown User"), # This fixes your UI
-                    "quiz_title": quiz_titles.get(res["quiz_id"], "Deleted Quiz"),
-                    "score": res.get("score"),
-                    "total": res.get("total", res.get("total_questions")), # Handles both key variations
+                    "username": username,
+                    "quiz_title": quiz_titles.get(q_id_str, "Deleted Quiz"),
+                    "score": res.get("score", 0),
+                    "total": res.get("total") or res.get("total_questions") or 10,
                     "percentage": res.get("percentage", 0),
                     "submitted_at": res.get("submitted_at")
                 })
@@ -158,6 +163,8 @@ def get_course_results(course_id):
             return jsonify({"results": formatted}), 200
             
         except Exception as e:
+            # Print to console so you can see the error in your terminal
+            print(f"DEBUG ERROR: {str(e)}") 
             return jsonify({"msg": "Error", "error": str(e)}), 500
 
     return fetch_data()
