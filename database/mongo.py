@@ -2,9 +2,15 @@ from pymongo import MongoClient
 import config
 
 if config.MONGO_URI:
-    client = MongoClient(config.MONGO_URI)
-    db = client[config.DB_NAME]
+    try:
+        client = MongoClient(config.MONGO_URI)
+        db = client[config.DB_NAME]
+    except Exception as e:
+        client = None
+        db = None
+        print(f"❌ ERROR: Failed to initialize MongoDB client: {e}")
 else:
+
     client = None
     db = None
     print("❌ ERROR: MONGO_URI is missing. Database connection will fail.")

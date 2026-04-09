@@ -5,11 +5,17 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Essential Environment Variables
-JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "super-secret-key")
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-MONGO_URI = os.getenv("MONGO_URI")
-DB_NAME = os.getenv("DB_NAME", "quiz_app")
-GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
+JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "super-secret-key").strip()
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "").strip()
+MONGO_URI = os.getenv("MONGO_URI", "").strip()
+DB_NAME = os.getenv("DB_NAME", "quiz_app").strip()
+GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant").strip()
+
+if MONGO_URI:
+    # Print a masked version of the URI to help debug without exposing secrets
+    preview = MONGO_URI[:15] + "..." + MONGO_URI[-5:] if len(MONGO_URI) > 20 else "Invalid Length"
+    print(f"📡 MONGO_URI detected: {preview}")
+
 
 # Validation Check
 missing_vars = []
