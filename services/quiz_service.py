@@ -7,7 +7,12 @@ from database.mongo import quizzes_collection
 from datetime import datetime
 from bson import ObjectId
 
-groq_client = Groq(api_key=GROQ_API_KEY)
+if GROQ_API_KEY:
+    groq_client = Groq(api_key=GROQ_API_KEY)
+else:
+    groq_client = None
+    print("❌ ERROR: Groq API Key is missing. Quiz generation will not work.")
+
 
 # --- HELPER UTILITIES ---
 
