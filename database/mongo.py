@@ -1,13 +1,20 @@
 from pymongo import MongoClient
 import config
 
-client = MongoClient(config.MONGO_URI)
-db = client[config.DB_NAME]
+if config.MONGO_URI:
+    client = MongoClient(config.MONGO_URI)
+    db = client[config.DB_NAME]
+else:
+    client = None
+    db = None
+    print("❌ ERROR: MONGO_URI is missing. Database connection will fail.")
+
 
 # Collections
-users_collection = db["users"]               # users: students and staff (with role field)
-courses_collection = db["courses"]           # courses info
-quizzes_collection = db["quizzes"]           # quizzes, linked to courses and staff
-quiz_results_collection = db["quiz_results"] # ✅ stores quiz scores, answers, evaluation
-enrollments_collection = db["enrollments"]   # student-course mapping
-submissions_collection = db["submissions"]   # quiz submissions by students
+users_collection = db["users"] if db is not None else None
+courses_collection = db["courses"] if db is not None else None
+quizzes_collection = db["quizzes"] if db is not None else None
+quiz_results_collection = db["quiz_results"] if db is not None else None
+enrollments_collection = db["enrollments"] if db is not None else None
+submissions_collection = db["submissions"] if db is not None else None
+
