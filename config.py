@@ -1,5 +1,10 @@
-JWT_SECRET_KEY = "super-secret-key"
-GROQ_API_KEY = "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"
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "super-secret-key")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 GROQ_MODEL = "llama-3.1-8b-instant"
-MONGO_URI = "mongodb+srv://jenishlinb_db_user:I4WR1bvg9NY0Kyfe@cluster0.bvblj13.mongodb.net/?appName=Cluster0"
-DB_NAME = "quiz_app"
+MONGO_URI = os.getenv("MONGO_URI")
+DB_NAME = os.getenv("DB_NAME", "quiz_app")
