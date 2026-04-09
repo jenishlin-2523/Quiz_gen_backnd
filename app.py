@@ -16,7 +16,6 @@ CORS(
         r"/*": {
             "origins": [
                 "http://localhost:3000",
-                "https://quiz-generator-h5ni.vercel.app",
                 "https://ai-quiz-gen-v1.vercel.app"
             ]
         }
